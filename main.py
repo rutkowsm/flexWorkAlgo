@@ -44,42 +44,79 @@ class Restaurant:
         self.restaurant_calendar[day].append(Vacancy(start_time, end_time))
 
 
+# def schedule_employees(employees, restaurant):
+#     # For each day in the restaurant calendar
+#     for day_index, vacancies in enumerate(restaurant.restaurant_calendar):
+#         # For each vacancy in the day
+#         for vacancy in vacancies:
+#             # Attempt to schedule each block in the vacancy
+#             for block_index in range(len(vacancy.blocks)):
+#                 scheduled_employee = None
+#                 for employee in employees:
+#                     hour_of_day = (vacancy.start_time + block_index) % 24
+#                     # Check if the employee is available and has not exceeded max weekly hours
+#                     if (employee.personal_calendar[day_index][hour_of_day] and
+#                             employee.hours_scheduled < employee.max_weekly_hours):
+#                         # Check for min_shift_length constraint
+#                         if can_schedule_shift(employee, day_index, hour_of_day, vacancy.start_time, vacancy.end_time,
+#                                               block_index):
+#                             vacancy.blocks[block_index] = employee.name
+#                             employee.personal_calendar[day_index][hour_of_day] = False
+#                             employee.hours_scheduled += 1
+#                             scheduled_employee = employee
+#                             break  # Stop searching if we scheduled someone
+#                 # If the block remains empty after trying all employees, mark it as EMPTY
+#                 if not scheduled_employee:
+#                     vacancy.blocks[block_index] = 'EMPTY'
+#
+#     return restaurant
+
 def schedule_employees(employees, restaurant):
     # For each day in the restaurant calendar
     for day_index, vacancies in enumerate(restaurant.restaurant_calendar):
         # For each vacancy in the day
         for vacancy in vacancies:
             # Attempt to schedule each block in the vacancy
-            for block_index in range(len(vacancy.blocks)):
-                scheduled_employee = None
-                for employee in employees:
-                    hour_of_day = (vacancy.start_time + block_index) % 24
-                    # Check if the employee is available and has not exceeded max weekly hours
-                    if (employee.personal_calendar[day_index][hour_of_day] and
-                            employee.hours_scheduled < employee.max_weekly_hours):
-                        # Check for min_shift_length constraint
-                        if can_schedule_shift(employee, day_index, hour_of_day, vacancy.start_time, vacancy.end_time,
-                                              block_index):
-                            vacancy.blocks[block_index] = employee.name
-                            employee.personal_calendar[day_index][hour_of_day] = False
-                            employee.hours_scheduled += 1
-                            scheduled_employee = employee
-                            break  # Stop searching if we scheduled someone
-                # If the block remains empty after trying all employees, mark it as EMPTY
-                if not scheduled_employee:
-                    vacancy.blocks[block_index] = 'EMPTY'
+            for employee in employees:
+                # Reset available blocks for the next employee
+                if can_schedule_shift(employee, day_index, vacancy.start_time, vacancy, restaurant.restaurant_calendar):
+                    break  # Employee was scheduled, move to next vacancy
 
     return restaurant
 
 
-def can_schedule_shift(employee, day_index, hour_of_day, start_time, end_time, block_index):
-    # Check if scheduling the employee for this block would allow for a shift of at least min_shift_length
-    shift_start = max(start_time, hour_of_day - employee.min_shift_length + 1)
-    shift_end = min(end_time, hour_of_day + employee.min_shift_length)
-    for hour in range(shift_start, shift_end):
-        if not employee.personal_calendar[day_index][hour % 24]:
-            return False  # Employee is not available for the minimum shift length
-    return True
+def can_schedule_shift(employee, day_index, start_block, vacancy, restaurant_calendar):
+    # Find continuous available blocks in the employee's schedule that meet the min_shift_length
+    start_of_available_block = None
+    for block_index in range(vacancy.start_time, vacancy.end_time):
+        if employee.personal_calendar[day_index][block_index]:
+            if start_of_available_block is None:
+                start_of_available_block = block_index
+        else:
+            # If there was an ongoing available block, check if it was long enough
+            if start_of_available_block is not None and block_index - start_of_available_block >= employee.min_shift_length:
+                # Check if adding this shift would exceed the employee's max weekly hours
+                if employee.hours_scheduled + (block_index - start_of_available_block) <= employee.max_weekly_hours:
+                    # Schedule the entire shift
+                    for hour in range(start_of_available_block, block_index):
+                        vacancy.blocks[hour - vacancy.start_time] = employee.name
+                        employee.personal_calendar[day_index][hour] = False
+                    employee.hours_scheduled += (block_index - start_of_available_block)
+                    return True  # Shift scheduled successfully
+            # Reset the start of the available block since the employee is not available at this hour
+            start_of_available_block = None
+
+    # After checking all blocks, if there is an ongoing available block, check again if it is long enough
+    if start_of_available_block is not None and vacancy.end_time - start_of_available_block >= employee.min_shift_length:
+        if employee.hours_scheduled + (vacancy.end_time - start_of_available_block) <= employee.max_weekly_hours:
+            for hour in range(start_of_available_block, vacancy.end_time):
+                vacancy.blocks[hour - vacancy.start_time] = employee.name
+                employee.personal_calendar[day_index][hour] = False
+            employee.hours_scheduled += (vacancy.end_time - start_of_available_block)
+            return True  # Shift scheduled successfully
+
+    return False  # Could not find a valid shift
+
 
 
 # Example usage:
