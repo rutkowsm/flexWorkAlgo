@@ -29,10 +29,11 @@ class Employee:
 
 
 class Vacancy:
-    def __init__(self, start_time, end_time, num_vacancies=1):
+    def __init__(self, day, start_time, end_time):
+        self.day = day
         self.start_time = start_time
         self.end_time = end_time
-        self.blocks = ['EMPTY'] * (end_time - start_time) * num_vacancies
+        self.blocks = ['EMPTY'] * (end_time - start_time)
 
 
 class Restaurant:
@@ -41,7 +42,7 @@ class Restaurant:
         self.restaurant_calendar = [[] for _ in range(7)]  # 7 days in a week
 
     def add_vacancy(self, day, start_time, end_time):
-        self.restaurant_calendar[day].append(Vacancy(start_time, end_time))
+        self.restaurant_calendar[day].append(Vacancy(day, start_time, end_time))
 
 
 # def schedule_employees(employees, restaurant):
@@ -92,26 +93,23 @@ def find_next_available_shift(employee, day_index, vacancy):
 
 def schedule_shifts_for_day(employees, day_index, vacancies):
     for vacancy in vacancies:
-        # Sort employees by the least hours scheduled to prioritize fair distribution
         employees.sort(key=lambda e: e.hours_scheduled)
-
-        for employee in employees:
-            # Check if the employee can work within this vacancy's time frame
-            if employee.hours_scheduled >= employee.max_weekly_hours:
-                continue  # This employee is already at their max hours
-
-            # Find the next available shift that the employee can work
-            next_start_time, next_end_time = find_next_available_shift(employee, day_index, vacancy)
-
-            # If a valid shift is found, schedule the employee
-            if next_start_time is not None and next_end_time is not None:
-                # Schedule the employee for this shift
-                for hour in range(next_start_time, next_end_time):
-                    vacancy.blocks[hour - vacancy.start_time] = employee.name
-                    employee.personal_calendar[day_index][hour] = False
-                employee.hours_scheduled += (next_end_time - next_start_time)
-                # Break to avoid assigning the employee to multiple vacancies on the same day
-                break
+        for block_index in range(len(vacancy.blocks)):
+            scheduled_employee = None
+            for employee in employees:
+                start_time, end_time = vacancy.start_time + block_index, vacancy.start_time + block_index + 1
+                if (
+                    employee.hours_scheduled < employee.max_weekly_hours
+                    and employee.personal_calendar[day_index][start_time]
+                ):
+                    vacancy.blocks[block_index] = employee.name
+                    employee.personal_calendar[day_index][start_time] = False
+                    employee.hours_scheduled += 1
+                    scheduled_employee = employee
+                    break
+            # If no employee was scheduled, mark the block as 'EMPTY'
+            if not scheduled_employee:
+                vacancy.blocks[block_index] = 'EMPTY'
 
 
 def schedule_employees(employees, restaurant):
