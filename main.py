@@ -78,45 +78,132 @@ def is_employee_available(employee, day_index, start_time, end_time):
 
 def schedule_shifts_for_day(employees, day_index, vacancies):
     for vacancy in vacancies:
+        # Sort employees by the least hours scheduled to prioritize fair distribution
+        employees.sort(key=lambda e: e.hours_scheduled)
+
         for employee in employees:
             # Check if the employee can work within this vacancy's time frame
-            if (employee.hours_scheduled < employee.max_weekly_hours and
-                    is_employee_available(employee, day_index, vacancy.start_time, vacancy.end_time)):
+            if employee.hours_scheduled >= employee.max_weekly_hours:
+                continue  # This employee is already at their max hours
 
-                # Determine the actual shift length based on availability and preferences
-                shift_length = min(employee.max_shift_length, vacancy.end_time - vacancy.start_time)
-                shift_length = max(shift_length, employee.min_shift_length)
+            # Find the next available shift that the employee can work
+            next_start_time, next_end_time = find_next_available_shift(employee, day_index, vacancy)
 
-                # Check if the shift can be scheduled within the vacancy hours
-                for start_time in range(vacancy.start_time, vacancy.end_time):
-                    end_time = start_time + shift_length
-                    # If the shift ends after the vacancy ends, try a shorter shift
-                    if end_time > vacancy.end_time:
-                        continue
+            # If a valid shift is found, schedule the employee
+            if next_start_time is not None and next_end_time is not None:
+                # Schedule the employee for this shift
+                for hour in range(next_start_time, next_end_time):
+                    vacancy.blocks[hour - vacancy.start_time] = employee.name
+                    employee.personal_calendar[day_index][hour] = False
+                employee.hours_scheduled += (next_end_time - next_start_time)
+                # Break to avoid assigning the employee to multiple vacancies on the same day
+                break
 
-                    # If the employee is available for this shift
-                    if is_employee_available(employee, day_index, start_time, end_time):
-                        # Schedule the employee for this shift
-                        for hour in range(start_time, end_time):
-                            vacancy.blocks[hour - vacancy.start_time] = employee.name
-                            employee.personal_calendar[day_index][hour] = False
-                        employee.hours_scheduled += shift_length
-                        break  # Move on to the next vacancy or employee
+
+def find_next_available_shift(employee, day_index, vacancy):
+    # Look for the next available shift within the vacancy timeframe
+    for start_block in range(vacancy.start_time, vacancy.end_time):
+        end_block = start_block + employee.min_shift_length
+        if end_block > vacancy.end_time or employee.hours_scheduled + employee.min_shift_length > employee.max_weekly_hours:
+            continue  # This shift would be out of bounds or exceed max weekly hours
+
+        # Check if the employee is available for the entire duration of the shift
+        if is_employee_available(employee, day_index, start_block, end_block):
+            return start_block, end_block  # Return the valid shift times
+
+    return None, None  # No valid shift found
+
+
+# Rest of the scheduling logic remains the same
 
 
 def schedule_employees(employees, restaurant):
-    # For each day in the restaurant calendar
-    for day_index in range(len(restaurant.restaurant_calendar)):
-        # Schedule shifts for the current day
-        schedule_shifts_for_day(employees, day_index, restaurant.restaurant_calendar[day_index])
+    # First pass: fill all vacancies
+    for day_index, daily_vacancies in enumerate(restaurant.restaurant_calendar):
+        for vacancy in daily_vacancies:
+            for block_index in range(len(vacancy.blocks)):
+                for employee in employees:
+                    if can_schedule_employee(employee, day_index, block_index, vacancy):
+                        schedule_employee(employee, day_index, block_index, vacancy)
+                        break  # Break after scheduling an employee for this block
 
-        # Fill in 'EMPTY' for any unscheduled blocks
-        for vacancy in restaurant.restaurant_calendar[day_index]:
-            for i in range(len(vacancy.blocks)):
-                if vacancy.blocks[i] == 'EMPTY':
-                    vacancy.blocks[i] = 'EMPTY'
+    # Second pass: review and redistribute for fairness
+    redistribute_shifts_for_fairness(employees, restaurant)
 
     return restaurant
+
+
+def can_schedule_employee(employee, day_index, block_index, vacancy):
+    # Check if the employee is available and not exceeding max weekly hours
+    start_time = vacancy.start_time + block_index
+    end_time = start_time + employee.min_shift_length
+    if employee.hours_scheduled >= employee.max_weekly_hours or end_time > vacancy.end_time:
+        return False
+    return all(employee.personal_calendar[day_index][start_time:end_time])
+
+
+def schedule_employee(employee, day_index, block_index, vacancy):
+    # Schedule the employee for their minimum shift length
+    start_time = vacancy.start_time + block_index
+    for hour in range(start_time, start_time + employee.min_shift_length):
+        vacancy.blocks[hour - vacancy.start_time] = employee.name
+        employee.personal_calendar[day_index][hour] = False
+    employee.hours_scheduled += employee.min_shift_length
+
+
+def redistribute_shifts_for_fairness(employees, restaurant):
+    # Sort employees by hours scheduled (ascending)
+    employees.sort(key=lambda e: e.hours_scheduled)
+    # Attempt to redistribute shifts from more scheduled to less scheduled employees
+    for day_index, daily_vacancies in enumerate(restaurant.restaurant_calendar):
+        for vacancy in daily_vacancies:
+            for block_index, block in enumerate(vacancy.blocks):
+                if block == 'EMPTY':
+                    continue  # Skip empty blocks
+                current_employee = next((e for e in employees if e.name == block), None)
+                for employee in employees:
+                    if employee is current_employee:
+                        continue  # Skip if it's the same employee
+                    # Check if swapping is possible and beneficial for fairness
+                    if can_swap_shift(current_employee, employee, day_index, block_index, vacancy):
+                        swap_shift(current_employee, employee, day_index, block_index, vacancy)
+
+
+def can_swap_shift(current_employee, new_employee, day_index, block_index, vacancy):
+    # Check if new_employee is already scheduled for max hours
+    if new_employee.hours_scheduled >= new_employee.max_weekly_hours:
+        return False
+
+    # Check if the current block plus min_shift_length for new_employee is within the vacancy limits
+    if block_index + new_employee.min_shift_length > len(vacancy.blocks):
+        return False
+
+    # Check if new_employee is available for the duration of the current_employee's shift
+    for hour in range(block_index, block_index + current_employee.min_shift_length):
+        if hour >= len(new_employee.personal_calendar[day_index]) or not new_employee.personal_calendar[day_index][
+            vacancy.start_time + hour]:
+            return False
+
+    # Check if the shift swap will not cause new_employee to exceed max_weekly_hours
+    if new_employee.hours_scheduled + current_employee.min_shift_length > new_employee.max_weekly_hours:
+        return False
+
+    # If all conditions are met, we can swap the shift
+    return True
+
+
+def swap_shift(current_employee, new_employee, day_index, block_index, vacancy):
+    # Perform the shift swap
+    for hour in range(block_index, block_index + current_employee.min_shift_length):
+        # Update the vacancy schedule
+        vacancy.blocks[hour] = new_employee.name
+        # Update the personal calendars
+        current_employee.personal_calendar[day_index][vacancy.start_time + hour] = True
+        new_employee.personal_calendar[day_index][vacancy.start_time + hour] = False
+
+    # Update the hours scheduled
+    current_employee.hours_scheduled -= current_employee.min_shift_length
+    new_employee.hours_scheduled += current_employee.min_shift_length
 
 
 # Example usage:
