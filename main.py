@@ -197,8 +197,8 @@ def swap_shift(current_employee, new_employee, day_index, block_index, vacancy):
 
 
 # Example usage:
-john_calendar = [[0, 8, 11]]  # John's busy times
-kate_calendar = []  # Kate is available at all times
+john_calendar = [[0, 8, 11], [1, 17, 18]]  # John's busy times
+kate_calendar = [[0, 12, 16]]  # Kate is available at all times
 
 employee_1 = Employee(name="John", email="john@mail.com", personal_calendar=john_calendar, min_shift_length=2,
                       max_shift_length=8)
