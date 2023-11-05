@@ -76,6 +76,20 @@ def is_employee_available(employee, day_index, start_time, end_time):
     return all(employee.personal_calendar[day_index][hour] for hour in range(start_time, end_time))
 
 
+def find_next_available_shift(employee, day_index, vacancy):
+    # Look for the next available shift within the vacancy timeframe
+    for start_block in range(vacancy.start_time, vacancy.end_time):
+        end_block = start_block + employee.min_shift_length
+        if end_block > vacancy.end_time or employee.hours_scheduled + employee.min_shift_length > employee.max_weekly_hours:
+            continue  # This shift would be out of bounds or exceed max weekly hours
+
+        # Check if the employee is available for the entire duration of the shift
+        if is_employee_available(employee, day_index, start_block, end_block):
+            return start_block, end_block  # Return the valid shift times
+
+    return None, None  # No valid shift found
+
+
 def schedule_shifts_for_day(employees, day_index, vacancies):
     for vacancy in vacancies:
         # Sort employees by the least hours scheduled to prioritize fair distribution
@@ -100,32 +114,10 @@ def schedule_shifts_for_day(employees, day_index, vacancies):
                 break
 
 
-def find_next_available_shift(employee, day_index, vacancy):
-    # Look for the next available shift within the vacancy timeframe
-    for start_block in range(vacancy.start_time, vacancy.end_time):
-        end_block = start_block + employee.min_shift_length
-        if end_block > vacancy.end_time or employee.hours_scheduled + employee.min_shift_length > employee.max_weekly_hours:
-            continue  # This shift would be out of bounds or exceed max weekly hours
-
-        # Check if the employee is available for the entire duration of the shift
-        if is_employee_available(employee, day_index, start_block, end_block):
-            return start_block, end_block  # Return the valid shift times
-
-    return None, None  # No valid shift found
-
-
-# Rest of the scheduling logic remains the same
-
-
 def schedule_employees(employees, restaurant):
     # First pass: fill all vacancies
     for day_index, daily_vacancies in enumerate(restaurant.restaurant_calendar):
-        for vacancy in daily_vacancies:
-            for block_index in range(len(vacancy.blocks)):
-                for employee in employees:
-                    if can_schedule_employee(employee, day_index, block_index, vacancy):
-                        schedule_employee(employee, day_index, block_index, vacancy)
-                        break  # Break after scheduling an employee for this block
+        schedule_shifts_for_day(employees, day_index, daily_vacancies)
 
     # Second pass: review and redistribute for fairness
     redistribute_shifts_for_fairness(employees, restaurant)
