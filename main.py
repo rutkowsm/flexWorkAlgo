@@ -182,7 +182,7 @@ def swap_shift(current_employee, new_employee, day_index, block_index, vacancy):
 
 # Example usage:
 john_calendar = [[0, 8, 11], [1, 15, 18]]  # John zajęty między 15 a 18 we wtorek
-kate_calendar = []  # Kate is available at all times
+kate_calendar = [[3, 14, 18]]  # Kate is available at all times
 bill_calendar = []  # Kate is available at all times
 
 employee_1 = Employee(name="John", email="john@mail.com", personal_calendar=john_calendar, min_shift_length=2,
@@ -220,3 +220,8 @@ for day_index, vacancies in enumerate(restaurant_schedule.restaurant_calendar):
                 f"[{', '.join([f'{hour}: {name}' for hour, name in enumerate(vacancy.blocks, start=vacancy.start_time)])}]")
     else:
         print(f"There is no vacancy set for {day_of_week}")
+
+print("-" * 40)
+
+for employee in employees:
+    print(f"{employee.name}: {employee.hours_scheduled} hours scheduled")
